@@ -3,6 +3,7 @@ import hashlib
 import base64
 import json
 import uuid
+import requests
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
@@ -46,6 +47,27 @@ def verify_shopify_webhook(data, hmac_header):
     calculated_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8')
     return hmac.compare_digest(calculated_hmac_base64, hmac_header)
 
+# Function to Deploy MT5 Bot
+def deploy_mt5_bot(api_key, customer_email):
+    """Trigger MT5 Bot Deployment"""
+    mt5_api_url = "https://your-mt5-server.com/deploy-bot"  # Replace with actual MT5 API endpoint
+    payload = {
+        "api_key": api_key,
+        "email": customer_email
+    }
+
+    try:
+        response = requests.post(mt5_api_url, json=payload)
+        if response.status_code == 200:
+            print(f"🚀 MT5 Bot Deployed for {customer_email}")
+            return True
+        else:
+            print(f"⚠️ Deployment failed: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Deployment Error: {str(e)}")
+        return False
+
 # Webhook Route
 @app.route("/", methods=["POST"])
 @app.route("/webhook", methods=["POST"])
@@ -60,7 +82,7 @@ def webhook():
     print("🔹 Verified Shopify Webhook Data:", json.dumps(json_data, indent=4))
 
     # Extract Order Data
-    shopify_order_id = json_data.get("id")
+    shopify_order_id = str(json_data.get("id"))
     customer_email = json_data.get("email", "unknown@example.com")  # Fallback email
 
     # Check if order already exists
@@ -75,7 +97,15 @@ def webhook():
 
     print(f"✅ Order {shopify_order_id} stored with API Key: {new_order.api_key}")
 
-    return jsonify({"message": "Order stored successfully", "api_key": new_order.api_key}), 200
+    # Deploy MT5 Bot
+    deployment_success = deploy_mt5_bot(new_order.api_key, customer_email)
+
+    if deployment_success:
+        new_order.status = "deployed"
+        db.session.commit()
+        return jsonify({"message": "Bot deployed successfully", "api_key": new_order.api_key}), 200
+    else:
+        return jsonify({"error": "Bot deployment failed"}), 500
 
 # Endpoint to Retrieve API Key
 @app.route("/get-api-key", methods=["GET"])
