@@ -4,6 +4,7 @@ import base64
 import json
 import uuid
 import requests
+import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
@@ -121,6 +122,7 @@ def get_api_key():
     return jsonify({"api_key": order.api_key, "order_status": order.status}), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))  # Default to 10000, but Render will set PORT dynamically
+    app.run(host="0.0.0.0", port=port)
 
  
