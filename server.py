@@ -40,13 +40,25 @@ with app.app_context():
 # Shopify Webhook Verification
 def verify_shopify_webhook(data, hmac_header):
     """Verify Shopify webhook signature"""
+    if not hmac_header:
+        print("❌ No HMAC header received from Shopify")
+        return False
+
+    # Generate HMAC using the shared secret
     calculated_hmac = hmac.new(
         SHOPIFY_WEBHOOK_SECRET.encode('utf-8'),
         data,
         hashlib.sha256
     ).digest()
-    calculated_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8')
-    return hmac.compare_digest(calculated_hmac_base64, hmac_header)
+
+    # Base64 encode it to match Shopify's header format
+    expected_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8')
+
+    # Log for debugging
+    print(f"🔍 Expected HMAC: {expected_hmac_base64}")
+    print(f"🔍 Received HMAC: {hmac_header}")
+
+    return hmac.compare_digest(expected_hmac_base64, hmac_header)
 
 # Function to Deploy MT5 Bot
 def deploy_mt5_bot(api_key, customer_email):
@@ -76,7 +88,7 @@ def webhook():
     data = request.get_data()  # Get raw request data
     hmac_header = request.headers.get("X-Shopify-Hmac-SHA256")
 
-    if not hmac_header or not verify_shopify_webhook(data, hmac_header):
+    if not verify_shopify_webhook(data, hmac_header):
         return jsonify({"error": "Unauthorized"}), 401
 
     json_data = json.loads(data)
@@ -124,5 +136,3 @@ def get_api_key():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Default to 10000, but Render will set PORT dynamically
     app.run(host="0.0.0.0", port=port)
-
- 
