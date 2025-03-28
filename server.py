@@ -51,14 +51,15 @@ def verify_shopify_webhook(data, hmac_header):
         hashlib.sha256
     ).digest()
 
-    # Base64 encode it to match Shopify's header format
-    expected_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8')
+    # Base64 encode it to match Shopify's header format and strip whitespace
+    expected_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8').strip()
+    received_hmac_base64 = hmac_header.strip()
 
     # Log for debugging
     print(f"🔍 Expected HMAC: {expected_hmac_base64}")
-    print(f"🔍 Received HMAC: {hmac_header}")
+    print(f"🔍 Received HMAC: {received_hmac_base64}")
 
-    return hmac.compare_digest(expected_hmac_base64, hmac_header)
+    return hmac.compare_digest(expected_hmac_base64, received_hmac_base64)
 
 # Function to Deploy MT5 Bot
 def deploy_mt5_bot(api_key, customer_email):
