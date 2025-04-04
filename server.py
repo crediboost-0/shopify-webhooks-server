@@ -43,19 +43,26 @@ def verify_shopify_webhook(data, hmac_header):
         print("❌ No HMAC header received from Shopify")
         return False
 
-    calculated_hmac = hmac.new(
-        SHOPIFY_WEBHOOK_SECRET.encode('utf-8'),
-        data,
-        hashlib.sha256
-    ).digest()
+    try:
+        # Log raw data
+        print(f"📝 Raw Webhook Data: {data.decode('utf-8')}")
 
-    expected_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8').strip()
-    received_hmac_base64 = hmac_header.strip()
+        calculated_hmac = hmac.new(
+            SHOPIFY_WEBHOOK_SECRET.encode('utf-8'),
+            data,  # raw bytes
+            hashlib.sha256
+        ).digest()
 
-    print(f"🔍 Expected HMAC: {expected_hmac_base64}")
-    print(f"🔍 Received HMAC: {received_hmac_base64}")
+        expected_hmac_base64 = base64.b64encode(calculated_hmac).decode('utf-8').strip()
+        received_hmac_base64 = hmac_header.strip()
 
-    return hmac.compare_digest(expected_hmac_base64, received_hmac_base64)
+        print(f"🔍 Expected HMAC: {expected_hmac_base64}")
+        print(f"🔍 Received HMAC: {received_hmac_base64}")
+
+        return hmac.compare_digest(expected_hmac_base64, received_hmac_base64)
+    except Exception as e:
+        print(f"❌ HMAC Verification Error: {str(e)}")
+        return False
 
 # Function to Deploy MT5 Bot
 def deploy_mt5_bot(api_key, customer_email):
@@ -87,8 +94,13 @@ def webhook():
     if not verify_shopify_webhook(data, hmac_header):
         return jsonify({"error": "Unauthorized"}), 401
 
-    json_data = json.loads(data)
-    print("🔹 Verified Shopify Webhook Data:", json.dumps(json_data, indent=4))
+    try:
+        json_data = json.loads(data)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    print("🔹 Verified Shopify Webhook Data:")
+    print(json.dumps(json_data, indent=4))
 
     shopify_order_id = str(json_data.get("id"))
     customer_email = json_data.get("email", "unknown@example.com")
@@ -125,6 +137,7 @@ def get_api_key():
 
     return jsonify({"api_key": order.api_key, "order_status": order.status}), 200
 
+# Run the app
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
