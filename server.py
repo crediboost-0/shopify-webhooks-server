@@ -11,16 +11,16 @@ from flask_sqlalchemy import SQLAlchemy
 # Initialize Flask app
 app = Flask(__name__)
 
-# Shopify Webhook Secret (Replace with your actual secret)
+# Shopify Webhook Secret (replace with your actual secret)
 SHOPIFY_WEBHOOK_SECRET = "a236ce4d313d04271e6b43e65c945f9df0105c71e73695280c2080c709f82e5c"
 
-# Database Configuration
+# Database configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///orders.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# Order Model
+# Order model
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     shopify_order_id = db.Column(db.String(50), unique=True, nullable=False)
@@ -33,23 +33,34 @@ class Order(db.Model):
         self.customer_email = customer_email
         self.api_key = str(uuid.uuid4())  # Generate unique API key
 
+# Customer model (lightweight storage)
+class Customer(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    shopify_customer_id = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(100), nullable=False)
+    country = db.Column(db.String(50), default="Unknown")
+
+    def __init__(self, shopify_customer_id, email, country):
+        self.shopify_customer_id = shopify_customer_id
+        self.email = email
+        self.country = country
+
 # Create tables
 with app.app_context():
     db.create_all()
 
-# Shopify Webhook Verification
+# Webhook verification
 def verify_shopify_webhook(data, hmac_header):
     if not hmac_header:
         print("❌ No HMAC header received from Shopify")
         return False
 
     try:
-        # Log raw data
         print(f"📝 Raw Webhook Data: {data.decode('utf-8')}")
 
         calculated_hmac = hmac.new(
             SHOPIFY_WEBHOOK_SECRET.encode('utf-8'),
-            data,  # raw bytes
+            data,
             hashlib.sha256
         ).digest()
 
@@ -64,9 +75,9 @@ def verify_shopify_webhook(data, hmac_header):
         print(f"❌ HMAC Verification Error: {str(e)}")
         return False
 
-# Function to Deploy MT5 Bot
+# Deploy MT5 bot function
 def deploy_mt5_bot(api_key, customer_email):
-    mt5_api_url = "https://your-mt5-server.com/deploy-bot"  # Replace with actual MT5 API endpoint
+    mt5_api_url = "https://your-mt5-server.com/deploy-bot"  # Replace with real URL
     payload = {
         "api_key": api_key,
         "email": customer_email
@@ -84,7 +95,7 @@ def deploy_mt5_bot(api_key, customer_email):
         print(f"❌ Deployment Error: {str(e)}")
         return False
 
-# Webhook Route
+# Webhook route
 @app.route("/", methods=["POST"])
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -102,29 +113,56 @@ def webhook():
     print("🔹 Verified Shopify Webhook Data:")
     print(json.dumps(json_data, indent=4))
 
-    shopify_order_id = str(json_data.get("id"))
-    customer_email = json_data.get("email", "unknown@example.com")
+    # Handle customer webhooks
+    if "email" in json_data and "addresses" in json_data:
+        shopify_customer_id = str(json_data.get("id"))
+        email = json_data.get("email", "unknown@example.com")
+        country = json_data.get("default_address", {}).get("country", "Unknown")
 
-    existing_order = Order.query.filter_by(shopify_order_id=shopify_order_id).first()
-    if existing_order:
-        return jsonify({"message": "Order already exists"}), 200
+        existing_customer = Customer.query.filter_by(shopify_customer_id=shopify_customer_id).first()
+        if existing_customer:
+            print(f"👤 Customer already exists: {email}")
+        else:
+            new_customer = Customer(
+                shopify_customer_id=shopify_customer_id,
+                email=email,
+                country=country
+            )
+            db.session.add(new_customer)
+            db.session.commit()
+            print(f"👤 Stored new customer: {email} from {country}")
 
-    new_order = Order(shopify_order_id=shopify_order_id, customer_email=customer_email)
-    db.session.add(new_order)
-    db.session.commit()
+        return jsonify({"message": "Customer webhook processed"}), 200
 
-    print(f"✅ Order {shopify_order_id} stored with API Key: {new_order.api_key}")
+    # Handle order webhooks
+    elif "id" in json_data and "customer" in json_data:
+        shopify_order_id = str(json_data.get("id"))
+        customer_email = json_data.get("customer", {}).get("email", "unknown@example.com")
 
-    deployment_success = deploy_mt5_bot(new_order.api_key, customer_email)
+        existing_order = Order.query.filter_by(shopify_order_id=shopify_order_id).first()
+        if existing_order:
+            return jsonify({"message": "Order already exists"}), 200
 
-    if deployment_success:
-        new_order.status = "deployed"
+        new_order = Order(shopify_order_id=shopify_order_id, customer_email=customer_email)
+        db.session.add(new_order)
         db.session.commit()
-        return jsonify({"message": "Bot deployed successfully", "api_key": new_order.api_key}), 200
-    else:
-        return jsonify({"error": "Bot deployment failed"}), 500
 
-# Endpoint to Retrieve API Key
+        print(f"✅ Order {shopify_order_id} stored with API Key: {new_order.api_key}")
+
+        deployment_success = deploy_mt5_bot(new_order.api_key, customer_email)
+
+        if deployment_success:
+            new_order.status = "deployed"
+            db.session.commit()
+            return jsonify({"message": "Bot deployed successfully", "api_key": new_order.api_key}), 200
+        else:
+            return jsonify({"error": "Bot deployment failed"}), 500
+
+    else:
+        print("⚠️ Unrecognized webhook format")
+        return jsonify({"message": "Webhook type not recognized"}), 200
+
+# API key retrieval endpoint
 @app.route("/get-api-key", methods=["GET"])
 def get_api_key():
     customer_email = request.args.get("email")
@@ -137,7 +175,7 @@ def get_api_key():
 
     return jsonify({"api_key": order.api_key, "order_status": order.status}), 200
 
-# Run the app
+# Run the server
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
