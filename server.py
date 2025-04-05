@@ -33,7 +33,7 @@ class Order(db.Model):
         self.customer_email = customer_email
         self.api_key = str(uuid.uuid4())  # Generate unique API key
 
-# Customer model (lightweight storage)
+# Customer model
 class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     shopify_customer_id = db.Column(db.String(50), unique=True, nullable=False)
@@ -77,7 +77,7 @@ def verify_shopify_webhook(data, hmac_header):
 
 # Deploy MT5 bot function
 def deploy_mt5_bot(api_key, customer_email):
-    mt5_api_url = "https://your-mt5-server.com/deploy-bot"  # Replace with real URL
+    mt5_api_url = "https://shopify-webhooks-server.onrender.com/deploybot"
     payload = {
         "api_key": api_key,
         "email": customer_email
@@ -113,7 +113,7 @@ def webhook():
     print("🔹 Verified Shopify Webhook Data:")
     print(json.dumps(json_data, indent=4))
 
-    # Handle customer webhooks
+    # Handle customer creation webhook
     if "email" in json_data and "addresses" in json_data:
         shopify_customer_id = str(json_data.get("id"))
         email = json_data.get("email", "unknown@example.com")
@@ -134,7 +134,7 @@ def webhook():
 
         return jsonify({"message": "Customer webhook processed"}), 200
 
-    # Handle order webhooks
+    # Handle order webhook
     elif "id" in json_data and "customer" in json_data:
         shopify_order_id = str(json_data.get("id"))
         customer_email = json_data.get("customer", {}).get("email", "unknown@example.com")
@@ -179,3 +179,4 @@ def get_api_key():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
