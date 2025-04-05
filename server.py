@@ -174,6 +174,40 @@ def get_api_key():
         return jsonify({"error": "No API key found for this email"}), 404
 
     return jsonify({"api_key": order.api_key, "order_status": order.status}), 200
+@app.route("/subscription-webhook", methods=["POST"])
+def subscription_webhook():
+    data = request.get_json()
+    print("📬 Received Subscription Webhook:", json.dumps(data, indent=4))
+
+    event_type = data.get("event")
+    customer_email = data.get("customer_email")
+
+    if not customer_email or not event_type:
+        return jsonify({"error": "Missing customer_email or event"}), 400
+
+    order = Order.query.filter_by(customer_email=customer_email).first()
+    if not order:
+        return jsonify({"error": "No matching order found"}), 404
+
+    # Handle revoking access
+    if event_type in ["subscription_cancelled", "subscription_paused", "subscription_payment_failed"]:
+        order.status = "revoked"
+        db.session.commit()
+        print(f"❌ Access revoked for {customer_email} due to: {event_type}")
+
+        # Optionally call your MT5 API to deactivate the bot
+        try:
+            deactivate_res = requests.post("https://shopify-webhooks-server.onrender.com/deactivate-bot", json={
+                "api_key": order.api_key
+            })
+            print("📴 MT5 Deactivation Response:", deactivate_res.text)
+        except Exception as e:
+            print(f"⚠️ Error calling deactivate-bot: {str(e)}")
+
+        return jsonify({"message": f"Access revoked for {customer_email}"}), 200
+
+    print("ℹ️ Event not handled:", event_type)
+    return jsonify({"message": "Event received but not processed"}), 200
 
 # Run the server
 if __name__ == "__main__":
