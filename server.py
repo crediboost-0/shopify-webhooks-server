@@ -17,6 +17,7 @@ SHOPIFY_WEBHOOK_SECRET = "a236ce4d313d04271e6b43e65c945f9df0105c71e73695280c2080
 # Database configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///orders.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["DEBUG"] = False  # Set to False for production
 
 db = SQLAlchemy(app)
 
@@ -77,7 +78,7 @@ def verify_shopify_webhook(data, hmac_header):
 
 # Deploy MT5 bot function
 def deploy_mt5_bot(api_key, customer_email):
-    mt5_api_url = "https://shopify-webhooks-server.onrender.com/deploybot"
+    mt5_api_url = "http://212.115.108.177/deploybot"  # Update with your VPS public IP address
     payload = {
         "api_key": api_key,
         "email": customer_email
@@ -174,6 +175,7 @@ def get_api_key():
         return jsonify({"error": "No API key found for this email"}), 404
 
     return jsonify({"api_key": order.api_key, "order_status": order.status}), 200
+
 @app.route("/subscription-webhook", methods=["POST"])
 def subscription_webhook():
     data = request.get_json()
@@ -197,7 +199,7 @@ def subscription_webhook():
 
         # Optionally call your MT5 API to deactivate the bot
         try:
-            deactivate_res = requests.post("https://shopify-webhooks-server.onrender.com/deactivate-bot", json={
+            deactivate_res = requests.post("http://212.115.108.177/deactivate-bot", json={  # Update with your VPS public IP address
                 "api_key": order.api_key
             })
             print("📴 MT5 Deactivation Response:", deactivate_res.text)
@@ -213,4 +215,3 @@ def subscription_webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
